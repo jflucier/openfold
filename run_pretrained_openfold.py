@@ -172,7 +172,41 @@ def list_files_with_extensions(dir, extensions):
     return [f for f in os.listdir(dir) if f.endswith(extensions)]
 
 
+def human_readable_mem(num, suffix="B"):
+    for unit in ("", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"):
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}Yi{suffix}"
+
+
+def _dump_device_state():
+
+    device_idx = 0
+
+    free_mem, total_mem = torch.cuda.mem_get_info(device_idx)
+    used_mem = total_mem - free_mem
+
+    h_free = human_readable_mem(free_mem)
+    h_total = human_readable_mem(total_mem)
+    h_used = human_readable_mem(used_mem)
+
+    print(f"free {h_free}, {free_mem}")
+    print(f"total {h_total}, {total_mem}")
+    print(f"used {h_used}, {used_mem}")
+
+
+def _prelude():
+
+    _dump_device_state()
+    torch.cuda.empty_cache()
+    _dump_device_state()
+
+
 def main(args):
+
+    _prelude()
+
     # Create the output directory
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -521,4 +555,16 @@ if __name__ == "__main__":
             --model_device for better performance"""
         )
 
-    main(args)
+    mem_dump = os.environ.get("PYTORCH_MEM_HISTORY_DUMP")
+
+    if mem_dump is None:
+        main(args)
+        _dump_device_state()
+    else:
+        torch.cuda.memory._record_memory_history()
+        try:
+            main(args)
+        finally:
+            torch.cuda.memory._dump_snapshot(mem_dump)
+
+            _dump_device_state()
