@@ -195,6 +195,8 @@ def _dump_device_state():
     print(f"total {h_total}, {total_mem}")
     print(f"used {h_used}, {used_mem}")
 
+    print(torch.cuda.memory.memory_summary())
+
 
 def _prelude():
 
@@ -561,10 +563,10 @@ if __name__ == "__main__":
         main(args)
         _dump_device_state()
     else:
-        torch.cuda.memory._record_memory_history(enabled="all")
+        torch.cuda.memory._record_memory_history(True, 0)
         try:
             main(args)
-        finally:
-            torch.cuda.memory._dump_snapshot(mem_dump)
 
-            _dump_device_state()
+        except Exception as ex:
+            print(f"{ex}")
+            print(torch.cuda.memory.memory_summary())
