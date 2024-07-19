@@ -561,7 +561,7 @@ if __name__ == "__main__":
         main(args)
         _dump_device_state()
     else:
-        torch.cuda.memory._record_memory_history()
+        torch.cuda.memory._record_memory_history(enabled="all")
         try:
             main(args)
         finally:
