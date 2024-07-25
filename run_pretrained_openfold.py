@@ -139,7 +139,8 @@ def generate_feature_dict(
                 '\n'.join([f">{tag}\n{seq}" for tag, seq in zip(tags, seqs)])
             )
         feature_dict = data_processor.process_fasta(
-            fasta_path=tmp_fasta_path, alignment_dir=alignment_dir,
+            fasta_path=tmp_fasta_path,
+            alignment_dir=alignment_dir
         )
     elif len(seqs) == 1:
         tag = tags[0]
@@ -194,6 +195,45 @@ def main(args):
         with open(args.experiment_config_json, 'r') as f:
             custom_config_dict = json.load(f)
         config.update_from_flattened_dict(custom_config_dict)
+
+    print("")
+    print("#### INPUT / OUTPUT ####")
+    print(f"fasta_dir: {args.fasta_dir}")
+    print(f"output_dir: {args.output_dir}")
+    print(f"output prediction filenames: {args.output_postfix}")
+    print(f"cif_output: {args.cif_output}")
+    print(f"save embedded outputs: {args.save_outputs}")
+
+    print("")
+    print("#### PRESETS ####")
+    print(f"skip_relaxation: {args.skip_relaxation}")
+    print(f"use_precomputed_alignments: {args.use_precomputed_alignments}")
+    print(f"use_single_seq_mode: {args.use_single_seq_mode}")
+    print(f"long_sequence_inference: {args.long_sequence_inference}")
+    print(f"Threads: {args.cpus}")
+    print(f"multimer_ri_gap: {args.multimer_ri_gap}")
+    print(f"subtract_plddt: {args.subtract_plddt}")
+
+    print("")
+    print("#### MODEL PARAMS ####")
+    print(f"Model: {args.config_preset}")
+    print(f"trace_model: {args.trace_model}")
+
+    print("")
+    print("#### DATABASE PARAMS ####")
+    print(f"template_mmcif_dir: {args.template_mmcif_dir}")
+    print(f"max_template_date: {args.max_template_date}")
+    print(f"max_templates: {config.data.predict.max_templates}")
+    print(f"release_dates_path: {args.release_dates_path}")
+    print(f"obsolete_pdbs_path: {args.obsolete_pdbs_path}")
+
+    print("")
+    print("#### GPU / AI PARAMS ####")
+    print(f"model_device: {args.model_device}")
+    print(f"openfold_checkpoint_path: {args.openfold_checkpoint_path}")
+    print(f"jax_param_path: {args.jax_param_path}")
+
+    print("")
 
     if args.trace_model:
         if not config.data.predict.fixed_size:
@@ -252,6 +292,7 @@ def main(args):
     for fasta_file in list_files_with_extensions(args.fasta_dir, (".fasta", ".fa")):
         # Gather input sequences
         fasta_path = os.path.join(args.fasta_dir, fasta_file)
+        print(f"reading fasta: {fasta_path}")
         with open(fasta_path, "r") as fp:
             data = fp.read()
 
@@ -273,12 +314,15 @@ def main(args):
     seq_sort_fn = lambda target: sum([len(s) for s in target[1]])
     sorted_targets = sorted(zip(tag_list, seq_list), key=seq_sort_fn)
     feature_dicts = {}
+
+    logger.info(f"Loading model information...")
     model_generator = load_models_from_command_line(
         config,
         args.model_device,
         args.openfold_checkpoint_path,
         args.jax_param_path,
-        args.output_dir)
+        args.output_dir
+    )
 
     for model, output_directory in model_generator:
         cur_tracing_interval = 0
@@ -288,6 +332,7 @@ def main(args):
                 output_name = f'{output_name}_{args.output_postfix}'
 
             # Does nothing if the alignments have already been computed
+            logger.info(f"Perform alignment if not already done...")
             precompute_alignments(tags, seqs, alignment_dir, args)
 
             feature_dict = feature_dicts.get(tag, None)
@@ -313,6 +358,10 @@ def main(args):
                 feature_dict, mode='predict', is_multimer=is_multimer
             )
 
+            # print("Storing feature dict...")
+            # with open(os.path.join(args.output_dir, f"{output_name}_feature_dict.pickle"), "wb") as fp:
+            #     pickle.dump(processed_feature_dict, fp, protocol=pickle.HIGHEST_PROTOCOL)
+
             processed_feature_dict = {
                 k: torch.as_tensor(v, device=args.model_device)
                 for k, v in processed_feature_dict.items()
@@ -330,6 +379,10 @@ def main(args):
                         f"Tracing time: {tracing_time}"
                     )
                     cur_tracing_interval = rounded_seqlen
+
+            print("Storing feature dict...")
+            with open(os.path.join(args.output_dir, f"{output_name}_feature_dict.pickle"), "wb") as fp:
+                pickle.dump(feature_dict, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
             out = run_model(model, processed_feature_dict, tag, args.output_dir)
 
